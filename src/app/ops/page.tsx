@@ -1,17 +1,17 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
 import { UploadCloud, Bot, FileText, CheckCircle, XCircle, Loader } from 'lucide-react';
 import Papa from 'papaparse';
 import JSZip from 'jszip';
 import { useFirebase } from '@/firebase';
-import { collection, doc, getDocs, query, where, writeBatch, updateDoc, Timestamp } from 'firebase/firestore';
+import { collection, doc, writeBatch, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { analyzeSentiment } from '@/ai/flows/analyze-sentiment';
-import { generatePsychProfile } from '@/ai/flows/generate-psych-profile';
 import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/hooks/use-toast';
+
 
 type MessageToProcess = {
   sender: string;
@@ -43,10 +43,9 @@ const decodeFacebookString = (str: string | undefined): string => {
 export default function OpsPage() {
   const { firestore } = useFirebase();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisLog, setAnalysisLog] = useState<string[]>([]);
-  const [progress, setProgress] = useState(0);
   const [fileQueue, setFileQueue] = useState<FileQueueItem[]>([]);
 
   const handleUploadClick = () => {
@@ -234,75 +233,31 @@ export default function OpsPage() {
     setIsProcessing(false);
   };
 
-
   const handleDeepAnalysis = async () => {
     if (!firestore) return;
     setIsAnalyzing(true);
-    setAnalysisLog(['> Starting deep analysis sweep...']);
-    setProgress(0);
-
+    
     try {
-      const assetsSnapshot = await getDocs(collection(firestore, 'assets'));
-      const totalAssets = assetsSnapshot.docs.length;
-      let assetsProcessed = 0;
-
-      if (totalAssets === 0) {
-        setAnalysisLog(prev => [...prev, '> No assets found to analyze.']);
-        setIsAnalyzing(false);
-        return;
+      const response = await fetch('/api/execute-sweep', {
+        method: 'POST',
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to start background analysis.');
       }
+      
+      toast({
+        title: 'Background Protocol Initiated',
+        description: 'Deep analysis is running on the server. You may leave this page.',
+      });
 
-      for (const assetDoc of assetsSnapshot.docs) {
-        const asset = assetDoc.data();
-        const assetId = assetDoc.id;
-        
-        setAnalysisLog(prev => [...prev, `> Analyzing ${asset.name} (${assetsProcessed + 1}/${totalAssets})...`]);
-
-        const interceptsRef = collection(firestore, `assets/${assetId}/intercepts`);
-        const interceptsSnapshot = await getDocs(interceptsRef);
-        const messageHistory = interceptsSnapshot.docs.map(doc => doc.data().content as string);
-
-        if (messageHistory.length > 0) {
-          try {
-            const analysisResult = await generatePsychProfile({ messageHistory });
-
-            const assetRef = doc(firestore, 'assets', assetId);
-            await updateDoc(assetRef, {
-              commercial_niche: analysisResult.market.niche,
-              threat_level: analysisResult.psych.threat_level,
-              psych_profile: JSON.stringify(analysisResult.psych.swot_analysis), // Storing SWOT as JSON string
-              estimatedValue: analysisResult.market.lead_value,
-            });
-
-            setAnalysisLog(prev => prev.map(log => 
-              log.startsWith(`> Analyzing ${asset.name}`) 
-                ? `> ✔️ ${asset.name}: Niche: ${analysisResult.market.niche}, Threat: ${analysisResult.psych.threat_level}`
-                : log
-            ));
-
-          } catch (error) {
-            console.error(`Failed to analyze ${asset.name}:`, error);
-            setAnalysisLog(prev => prev.map(log => 
-              log.startsWith(`> Analyzing ${asset.name}`)
-                ? `> ❌ FAILED to analyze ${asset.name}. See console.`
-                : log
-            ));
-          }
-        } else {
-           setAnalysisLog(prev => prev.map(log => 
-              log.startsWith(`> Analyzing ${asset.name}`)
-                ? `> 🟡 Skipped ${asset.name}: No message history.`
-                : log
-            ));
-        }
-
-        assetsProcessed++;
-        setProgress((assetsProcessed / totalAssets) * 100);
-      }
-      setAnalysisLog(prev => [...prev, '> Deep analysis sweep complete.']);
     } catch (error) {
-      console.error("Error during deep analysis:", error);
-      setAnalysisLog(prev => [...prev, `> FATAL ERROR during sweep. Check console.`]);
+      console.error("Error triggering deep analysis:", error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Could not start the deep analysis process.',
+      });
     }
 
     setIsAnalyzing(false);
@@ -380,21 +335,8 @@ export default function OpsPage() {
           disabled={isProcessing || isAnalyzing}
         >
           <Bot className="mr-2 h-6 w-6" />
-          RUN DEEP ANALYSIS
+          {isAnalyzing ? 'Initiating...' : 'RUN DEEP ANALYSIS'}
         </Button>
-        {isAnalyzing && (
-          <div className="w-full max-w-md text-center">
-            <p className="mb-2 text-sm text-accent">ANALYZING ASSETS...</p>
-            <Progress value={progress} className="h-2 [&>div]:bg-accent" />
-          </div>
-        )}
-        {analysisLog.length > 0 && (
-          <div className="mt-4 w-full max-w-2xl rounded-lg bg-black p-4 font-mono text-xs text-green-400 max-h-64 overflow-y-auto">
-            {analysisLog.map((log, index) => (
-              <div key={index}>{log}</div>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );
