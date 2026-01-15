@@ -56,10 +56,11 @@ export default function OpsPage() {
         name,
         threat_level: 'Green', // Default threat level
       };
-      // We need to get the ID, so we can't use the non-blocking version here for the initial asset creation.
-      const docRef = doc(collection(firestore, 'assets'));
-      await setDoc(docRef, newAsset);
-      return docRef.id;
+      const newDocRef = doc(collection(firestore, 'assets'));
+      // This part MUST be blocking to ensure we get the ID before proceeding.
+      // We will use the blocking setDoc here intentionally.
+      await setDoc(newDocRef, newAsset);
+      return newDocRef.id;
     }
   };
 
@@ -90,9 +91,13 @@ export default function OpsPage() {
       Papa.parse(file, {
         worker: true,
         step: async (results, parser) => {
+          parser.pause(); // Pause parsing to wait for async operation
           const row = results.data as string[];
           // Skip header or empty rows
-          if (row.length < 5 || row[0] === 'Date') return;
+          if (row.length < 5 || row[0] === 'Date') {
+             parser.resume();
+             return;
+          }
 
           const [timestamp, , sender, , message] = row;
           if (sender && message) {
@@ -111,6 +116,7 @@ export default function OpsPage() {
           }
           // Simple progress, not based on file size
           setProgress(prev => (prev < 95 ? prev + 0.1 : 95));
+          parser.resume();
         },
         complete: () => {
           setProgress(100);
@@ -123,39 +129,38 @@ export default function OpsPage() {
       const messageFiles = Object.values(zip.files).filter(f =>
         f.name.endsWith('message_1.json')
       );
-      let totalMessages = 0;
-      let currentProgress = 0;
-
+      
+      const allMessages: {sender_name: string, content: string, timestamp_ms: number}[] = [];
       for (const file of messageFiles) {
-        const content = await file.async('string');
-        const chat = JSON.parse(content);
-        totalMessages += chat.messages.length;
+          const content = await file.async('string');
+          const chatData = JSON.parse(content);
+          if (chatData.messages) {
+              allMessages.push(...chatData.messages);
+          }
       }
 
-
-      for (const file of messageFiles) {
-        const content = await file.async('string');
-        const chatData = JSON.parse(content);
-        const messages = chatData.messages;
-
-        for (const message of messages) {
-          if (message.sender_name && message.content) {
-             try {
-                const assetId = await upsertAsset(message.sender_name);
-                saveIntercept({
-                    asset_id: assetId,
-                    content: message.content,
-                    timestamp: new Date(message.timestamp_ms),
-                });
-                processedMessages++;
-                currentProgress = (processedMessages / totalMessages) * 100;
-                setProgress(currentProgress);
-             } catch(e) {
-                console.error("Error processing message from zip:", e);
-             }
-          }
+      const totalMessages = allMessages.length;
+      
+      for (let i = 0; i < totalMessages; i++) {
+        const message = allMessages[i];
+        if (message.sender_name && message.content) {
+            try {
+              const assetId = await upsertAsset(message.sender_name);
+              saveIntercept({
+                  asset_id: assetId,
+                  content: message.content,
+                  timestamp: new Date(message.timestamp_ms),
+              });
+              processedMessages++;
+              setProgress((processedMessages / totalMessages) * 100);
+            } catch(e) {
+              console.error("Error processing message from zip:", e);
+              // Decide if you want to stop the whole process
+              break; 
+            }
         }
       }
+
       setProgress(100);
       setMessageCount(processedMessages);
       setIsProcessing(false);
