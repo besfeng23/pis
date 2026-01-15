@@ -6,24 +6,17 @@ import { Progress } from '@/components/ui/progress';
 import { UploadCloud, Bot } from 'lucide-react';
 import Papa from 'papaparse';
 import JSZip from 'jszip';
-import {
-  useFirebase,
-} from '@/firebase';
-import {
-  collection,
-  doc,
-  getDocs,
-  query,
-  writeBatch,
-  updateDoc
-} from 'firebase/firestore';
+import { useFirebase } from '@/firebase';
+import { collection, doc, getDocs, query, where, writeBatch, updateDoc } from 'firebase/firestore';
 import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
-
+import { analyzeSentiment } from '@/ai/flows/analyze-sentiment';
+import { generatePsychProfile } from '@/ai/flows/generate-psych-profile';
 
 type Intercept = {
   asset_id: string;
   content: string;
   timestamp: any;
+  sentiment_score?: number;
 };
 
 type MessageToProcess = {
@@ -31,7 +24,6 @@ type MessageToProcess = {
   content: string;
   timestamp: any;
 };
-
 
 // Helper function to fix character encoding issues in Facebook JSONs
 const decodeFacebookString = (str: string | undefined) => {
@@ -44,7 +36,6 @@ const decodeFacebookString = (str: string | undefined) => {
     return str;
   }
 };
-
 
 export default function OpsPage() {
   const { firestore } = useFirebase();
@@ -63,9 +54,9 @@ export default function OpsPage() {
     if (!firestore) throw new Error('Firestore not initialized');
     const assetsCollection = collection(firestore, 'assets');
     const existingAssets = new Map<string, string>();
-    
+
     // Correct "Me" to "Joven Del Rosario Ong" and filter out duplicates
-    const correctedNames = [...new Set(names.map(name => name === 'Me' ? 'Joven Del Rosario Ong' : name))];
+    const correctedNames = [...new Set(names.map(name => (name === 'Me' ? 'Joven Del Rosario Ong' : name)))];
 
     // Firestore 'in' queries are limited to 30 values.
     const nameChunks = [];
@@ -75,26 +66,26 @@ export default function OpsPage() {
 
     // Find existing assets in chunks
     for (const chunk of nameChunks) {
-        if(chunk.length > 0) {
-          const q = query(assetsCollection, where('name', 'in', chunk));
-          const querySnapshot = await getDocs(q);
-          querySnapshot.forEach(doc => {
-              existingAssets.set(doc.data().name, doc.id);
-          });
-        }
+      if (chunk.length > 0) {
+        const q = query(assetsCollection, where('name', 'in', chunk));
+        const querySnapshot = await getDocs(q);
+        querySnapshot.forEach(doc => {
+          existingAssets.set(doc.data().name, doc.id);
+        });
+      }
     }
-    
+
     const newAssetNames = correctedNames.filter(name => !existingAssets.has(name));
 
     // Create new assets if any
     if (newAssetNames.length > 0) {
-        const batch = writeBatch(firestore);
-        newAssetNames.forEach(name => {
-            const newDocRef = doc(collection(firestore, 'assets'));
-            batch.set(newDocRef, { name, threat_level: 'Green', estimatedValue: 0 });
-            existingAssets.set(name, newDocRef.id);
-        });
-        await batch.commit();
+      const batch = writeBatch(firestore);
+      newAssetNames.forEach(name => {
+        const newDocRef = doc(collection(firestore, 'assets'));
+        batch.set(newDocRef, { name, threat_level: 'Green', estimatedValue: 0 });
+        existingAssets.set(name, newDocRef.id);
+      });
+      await batch.commit();
     }
 
     // Create a map from original name to ID for the final mapping
@@ -108,113 +99,119 @@ export default function OpsPage() {
     });
 
     return finalMap;
-};
+  };
 
   const processMessages = async (messages: MessageToProcess[]) => {
-      if (!firestore) return;
-      const totalMessages = messages.length;
-      if (totalMessages === 0) {
-        setProgress(100);
-        setIsProcessing(false);
-        return;
-      }
-      
-      const uniqueSenders = [...new Set(messages.map(m => m.sender))];
-      const assetMap = await getOrCreateAssets(uniqueSenders);
-
-      let processedCount = 0;
-      
-      for (const message of messages) {
-          const assetId = assetMap.get(message.sender);
-          if (assetId && message.content) {
-            const interceptRef = collection(firestore, `assets/${assetId}/intercepts`);
-            addDocumentNonBlocking(interceptRef, {
-                asset_id: assetId,
-                content: message.content,
-                timestamp: message.timestamp,
-            });
-          }
-          processedCount++;
-          setProgress((processedCount / totalMessages) * 100);
-      }
-
-      setMessageCount(processedCount);
-      setIsProcessing(false);
+    if (!firestore) return;
+    const totalMessages = messages.length;
+    if (totalMessages === 0) {
       setProgress(100);
-  }
+      setIsProcessing(false);
+      return;
+    }
 
-  const handleFileChange = async (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
+    const uniqueSenders = [...new Set(messages.map(m => m.sender))];
+    const assetMap = await getOrCreateAssets(uniqueSenders);
+
+    let processedCount = 0;
+
+    for (const message of messages) {
+      const assetId = assetMap.get(message.sender);
+      if (assetId && message.content) {
+        const interceptRef = collection(firestore, `assets/${assetId}/intercepts`);
+        // Analyze sentiment before saving
+        const sentimentResponse = await analyzeSentiment({ message: message.content });
+
+        addDocumentNonBlocking(interceptRef, {
+          asset_id: assetId,
+          content: message.content,
+          timestamp: message.timestamp,
+          sentiment_score: sentimentResponse.sentimentScore,
+        });
+      }
+      processedCount++;
+      setProgress((processedCount / totalMessages) * 100);
+    }
+
+    setMessageCount(processedCount);
+    setIsProcessing(false);
+    setProgress(100);
+  };
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     setIsProcessing(true);
     setProgress(0);
     setMessageCount(0);
-    
+
     if (file.name.endsWith('.csv')) {
       Papa.parse(file, {
         header: true,
         skipEmptyLines: true,
-        complete: async (results) => {
+        complete: async results => {
           const rows = results.data as { Date: string; Time: string; Name: string; Message: string }[];
-          const messages = rows.map(row => ({
-            sender: row.Name,
-            content: row.Message,
-            timestamp: new Date(`${row.Date} ${row.Time}`),
-          })).filter(m => m.sender && m.content);
+          const messages = rows
+            .map(row => ({
+              sender: row.Name,
+              content: row.Message,
+              timestamp: new Date(`${row.Date} ${row.Time}`),
+            }))
+            .filter(m => m.sender && m.content);
           await processMessages(messages);
         },
-        error: (error) => {
+        error: error => {
           console.error('Error parsing CSV:', error);
           setIsProcessing(false);
-        }
+        },
       });
     } else if (file.name.endsWith('.zip')) {
       try {
         const zip = await JSZip.loadAsync(file);
-        const messageFiles = Object.values(zip.files).filter(f =>
-          f.name.endsWith('message_1.json') && !f.dir
-        );
-        
-        let allMessages: {sender_name: string, content?: string, timestamp_ms: number}[] = [];
+        const messageFiles = Object.values(zip.files).filter(f => f.name.endsWith('message_1.json') && !f.dir);
+
+        let allMessages: { sender_name: string; content?: string; timestamp_ms: number }[] = [];
         for (const file of messageFiles) {
-            const content = await file.async('string');
-            const chatData = JSON.parse(content);
-            if (chatData.messages) {
-                allMessages.push(...chatData.messages);
-            }
+          const content = await file.async('string');
+          const chatData = JSON.parse(content);
+          if (chatData.messages) {
+            allMessages.push(...chatData.messages);
+          }
         }
-        
-        const messagesToProcess = allMessages.map(message => ({
+
+        const messagesToProcess = allMessages
+          .map(message => ({
             sender: decodeFacebookString(message.sender_name),
             content: decodeFacebookString(message.content),
             timestamp: new Date(message.timestamp_ms),
-        })).filter(m => m.sender && m.content);
-  
+          }))
+          .filter(m => m.sender && m.content);
+
         await processMessages(messagesToProcess);
       } catch (error) {
-        console.error("Error processing zip file:", error);
+        console.error('Error processing zip file:', error);
         setIsProcessing(false);
       }
     } else if (file.name.endsWith('.json')) {
       const reader = new FileReader();
-      reader.onload = async (e) => {
+      reader.onload = async e => {
         try {
           const text = e.target?.result as string;
           const chatData = JSON.parse(text);
           let messagesToProcess: MessageToProcess[] = [];
           if (chatData.messages) {
-            messagesToProcess = chatData.messages.map((message: { sender_name: string, content?: string, timestamp_ms: number }) => ({
+            messagesToProcess = chatData.messages
+              .map((message: { sender_name: string; content?: string; timestamp_ms: number }) => ({
                 sender: decodeFacebookString(message.sender_name),
                 content: decodeFacebookString(message.content),
                 timestamp: new Date(message.timestamp_ms),
-            })).filter((m: MessageToProcess) => m.sender && m.content);
+              }))
+              .filter((m: MessageToProcess) => m.sender && m.content);
           }
           await processMessages(messagesToProcess);
         } catch (error) {
-          console.error("Error processing JSON file:", error);
+          console.error('Error processing JSON file:', error);
           setIsProcessing(false);
         }
       };
@@ -230,14 +227,9 @@ export default function OpsPage() {
     setIsAnalyzing(true);
     setAnalysisLog([]);
 
-    const keywords = {
-      Wealth: ['crypto', 'bitcoin', 'business', 'hiring', 'investment', 'stocks', 'revenue'],
-      Health: ['gym', 'workout', 'diet', 'tired', 'pain', 'supplement', 'doctor'],
-      Lifestyle: ['travel', 'hotel', 'flight', 'party', 'dinner', 'concert'],
-      Critical: ['hate', 'debt', 'borrow', 'angry', 'blocked'],
-    };
-
     const assetsSnapshot = await getDocs(collection(firestore, 'assets'));
+    const totalAssets = assetsSnapshot.docs.length;
+    let assetsProcessed = 0;
 
     for (const assetDoc of assetsSnapshot.docs) {
       const asset = assetDoc.data();
@@ -245,40 +237,63 @@ export default function OpsPage() {
       const interceptsRef = collection(firestore, `assets/${assetId}/intercepts`);
       const interceptsSnapshot = await getDocs(interceptsRef);
 
-      const scores = { Wealth: 0, Health: 0, Lifestyle: 0, Critical: 0 };
+      const messageHistory = interceptsSnapshot.docs.map(doc => doc.data().content as string);
 
-      for (const interceptDoc of interceptsSnapshot.docs) {
-        const intercept = interceptDoc.data();
-        const content = (intercept.content || '').toLowerCase();
+      if (messageHistory.length > 0) {
+        try {
+          // Generate Psych Profile
+          const psychProfile = await generatePsychProfile({ messageHistory });
 
-        for (const category in keywords) {
-          for (const keyword of keywords[category as keyof typeof keywords]) {
-            if (content.includes(keyword)) {
-              scores[category as keyof typeof scores]++;
+          // Basic Niche & Threat from keywords (can be a fallback or complement)
+          const keywords = {
+            Wealth: ['crypto', 'bitcoin', 'business', 'hiring', 'investment', 'stocks', 'revenue'],
+            Health: ['gym', 'workout', 'diet', 'tired', 'pain', 'supplement', 'doctor'],
+            Lifestyle: ['travel', 'hotel', 'flight', 'party', 'dinner', 'concert'],
+            Critical: ['hate', 'debt', 'borrow', 'angry', 'blocked'],
+          };
+          const scores = { Wealth: 0, Health: 0, Lifestyle: 0, Critical: 0 };
+          for (const message of messageHistory) {
+            const content = message.toLowerCase();
+            for (const category in keywords) {
+              for (const keyword of keywords[category as keyof typeof keywords]) {
+                if (content.includes(keyword)) {
+                  scores[category as keyof typeof scores]++;
+                }
+              }
             }
           }
+          const nicheScores = {
+            Wealth: scores.Wealth,
+            Health: scores.Health,
+            Lifestyle: scores.Lifestyle,
+          };
+          const topNiche = Object.keys(nicheScores).reduce((a, b) =>
+            nicheScores[a as keyof typeof nicheScores] > nicheScores[b as keyof typeof nicheScores] ? a : b
+          ) as 'Wealth' | 'Health' | 'Lifestyle';
+          const threatLevel = scores.Critical > 0 ? 'Red' : 'Green';
+
+          // Update asset document
+          const assetRef = doc(firestore, 'assets', assetId);
+          await updateDoc(assetRef, {
+            commercial_niche: topNiche,
+            threat_level: threatLevel,
+            psych_profile: JSON.stringify(psychProfile),
+          });
+
+          setAnalysisLog(prev => [
+            ...prev,
+            `> Analyzed ${asset.name}: Assigned to ${topNiche}. Status: ${psychProfile.operationalStatus}`,
+          ]);
+        } catch (error) {
+          console.error(`Failed to analyze ${asset.name}:`, error);
+          setAnalysisLog(prev => [...prev, `> FAILED to analyze ${asset.name}. See console for details.`]);
         }
+      } else {
+        setAnalysisLog(prev => [...prev, `> Skipped ${asset.name}: No message history.`]);
       }
 
-      const nicheScores = {
-        Wealth: scores.Wealth,
-        Health: scores.Health,
-        Lifestyle: scores.Lifestyle,
-      };
-
-      const topNiche = Object.keys(nicheScores).reduce((a, b) =>
-        nicheScores[a as keyof typeof nicheScores] > nicheScores[b as keyof typeof nicheScores] ? a : b
-      ) as 'Wealth' | 'Health' | 'Lifestyle';
-
-      const threatLevel = scores.Critical > 0 ? 'Red' : 'Green';
-
-      const assetRef = doc(firestore, 'assets', assetId);
-      await updateDoc(assetRef, {
-        commercial_niche: topNiche,
-        threat_level: threatLevel,
-      });
-
-      setAnalysisLog(prev => [...prev, `> Analyzed ${asset.name}: Assigned to ${topNiche} Sector. Threat level: ${threatLevel}`]);
+      assetsProcessed++;
+      setProgress((assetsProcessed / totalAssets) * 100);
     }
 
     setIsAnalyzing(false);
@@ -287,12 +302,8 @@ export default function OpsPage() {
   return (
     <div className="p-4 md:p-6">
       <header className="mb-6">
-        <h1 className="font-headline text-2xl font-semibold tracking-tight text-primary">
-          OPS
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Settings and data upload.
-        </p>
+        <h1 className="font-headline text-2xl font-semibold tracking-tight text-primary">OPS</h1>
+        <p className="text-sm text-muted-foreground">Settings and data upload.</p>
       </header>
 
       <div className="flex flex-col items-center justify-center space-y-6 rounded-lg border-2 border-dashed border-border p-8">
@@ -304,12 +315,7 @@ export default function OpsPage() {
           accept=".csv,.zip,.json"
           disabled={isProcessing || isAnalyzing}
         />
-        <Button
-          onClick={handleUploadClick}
-          size="lg"
-          className="w-full max-w-xs"
-          disabled={isProcessing || isAnalyzing}
-        >
+        <Button onClick={handleUploadClick} size="lg" className="w-full max-w-xs" disabled={isProcessing || isAnalyzing}>
           <UploadCloud className="mr-2 h-6 w-6" />
           Upload Intel
         </Button>
@@ -322,9 +328,7 @@ export default function OpsPage() {
         )}
 
         {messageCount > 0 && !isProcessing && (
-          <div className="text-center text-lg text-primary">
-            Intel Acquired: {messageCount} Messages
-          </div>
+          <div className="text-center text-lg text-primary">Intel Acquired: {messageCount} Messages</div>
         )}
       </div>
 
@@ -340,12 +344,12 @@ export default function OpsPage() {
           EXECUTE PROFILING
         </Button>
         {isAnalyzing && (
-            <div className="w-full max-w-md text-center">
-                <p className="mb-2 text-sm text-accent">ANALYZING ASSETS...</p>
-                <Progress value={analysisLog.length / 1 * 100} className="h-2 [&>div]:bg-accent" />
-             </div>
+          <div className="w-full max-w-md text-center">
+            <p className="mb-2 text-sm text-accent">ANALYZING ASSETS...</p>
+            <Progress value={progress} className="h-2 [&>div]:bg-accent" />
+          </div>
         )}
-         {analysisLog.length > 0 && (
+        {analysisLog.length > 0 && (
           <div className="mt-4 w-full max-w-md rounded-lg bg-black p-4 font-mono text-xs text-green-400">
             {analysisLog.map((log, index) => (
               <div key={index}>{log}</div>
@@ -356,5 +360,3 @@ export default function OpsPage() {
     </div>
   );
 }
-
-    
