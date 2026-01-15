@@ -1,5 +1,4 @@
 import type { Config } from 'tailwindcss';
-import { GeistMono } from 'geist/font/mono';
 
 export default {
   darkMode: ['class'],
@@ -11,9 +10,9 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        body: ['Geist Mono', 'Source Code Pro', 'monospace'],
-        headline: ['Geist Mono', 'Source Code Pro', 'monospace'],
-        code: ['Geist Mono', 'Source Code Pro', 'monospace'],
+        body: ['var(--font-geist-mono)', 'monospace'],
+        headline: ['var(--font-geist-mono)', 'monospace'],
+        code: ['var(--font-geist-mono)', 'monospace'],
       },
       colors: {
         background: 'hsl(var(--background))',

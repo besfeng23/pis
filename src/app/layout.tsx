@@ -17,14 +17,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${GeistMono.variable} dark`}>
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;600;700&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+      <head></head>
       <body className="font-body antialiased">
         <FirebaseClientProvider>
           <div className="relative flex min-h-screen flex-col">
