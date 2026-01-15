@@ -9,6 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import Link from 'next/link';
 
 type Asset = {
   id: string;
@@ -55,34 +56,35 @@ export default function AssetsPage() {
       </header>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
         {assets?.map(asset => (
-          <Card
-            key={asset.id}
-            className="flex flex-col justify-between transition-colors hover:bg-white/5"
-          >
-            <CardHeader className="p-4">
-              <div className="flex items-start justify-between">
-                <CardTitle className="text-base font-medium leading-tight">
-                  {asset.name}
-                </CardTitle>
-                <Badge
-                  variant={asset.threat_level === 'Red' ? 'destructive' : 'default'}
-                  className={
-                    asset.threat_level === 'Green'
-                      ? 'border-accent bg-transparent text-accent'
-                      : ''
-                  }
-                >
-                  {asset.threat_level}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="p-4 pt-0">
-              <div className="text-sm font-semibold text-primary">
-                ${(asset.estimatedValue || 0).toLocaleString()}
-              </div>
-              <div className="text-xs text-muted-foreground">{asset.id}</div>
-            </CardContent>
-          </Card>
+          <Link href={`/assets/${asset.id}`} key={asset.id}>
+            <Card className="flex h-full flex-col justify-between transition-colors hover:bg-white/5">
+              <CardHeader className="p-4">
+                <div className="flex items-start justify-between">
+                  <CardTitle className="text-base font-medium leading-tight">
+                    {asset.name}
+                  </CardTitle>
+                  <Badge
+                    variant={
+                      asset.threat_level === 'Red' ? 'destructive' : 'default'
+                    }
+                    className={
+                      asset.threat_level === 'Green'
+                        ? 'border-accent bg-transparent text-accent'
+                        : ''
+                    }
+                  >
+                    {asset.threat_level}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                <div className="text-sm font-semibold text-primary">
+                  ${(asset.estimatedValue || 0).toLocaleString()}
+                </div>
+                <div className="text-xs text-muted-foreground">{asset.id}</div>
+              </CardContent>
+            </Card>
+          </Link>
         ))}
       </div>
     </div>

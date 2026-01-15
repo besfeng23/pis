@@ -10,6 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import Link from 'next/link';
 
 type Asset = {
   id: string;
@@ -43,7 +44,7 @@ export default function MarketPage() {
     columnTitle: Asset['commercial_niche'] | 'Uncategorized'
   ) => {
     if (!assets) return [];
-    
+
     const filteredAssets = assets.filter(asset => asset.name);
 
     if (columnTitle === 'Uncategorized') {
@@ -53,7 +54,9 @@ export default function MarketPage() {
           !columns.some(c => c.title === asset.commercial_niche)
       );
     }
-    return filteredAssets.filter(asset => asset.commercial_niche === columnTitle);
+    return filteredAssets.filter(
+      asset => asset.commercial_niche === columnTitle
+    );
   };
 
   return (
@@ -86,35 +89,40 @@ export default function MarketPage() {
               </h2>
               <div className="flex-1 space-y-2 overflow-y-auto p-2">
                 {getAssetsForColumn(column.title).map(asset => (
-                  <Card
-                    key={asset.id}
-                    className="flex flex-col justify-between transition-colors hover:bg-white/5"
-                  >
-                    <CardHeader className="p-3">
-                      <div className="flex items-start justify-between">
-                        <CardTitle className="text-sm font-medium leading-tight">
-                          {asset.name}
-                        </CardTitle>
-                        <Badge
-                          variant={
-                            asset.threat_level === 'Red' ? 'destructive' : 'default'
-                          }
-                          className={
-                            asset.threat_level === 'Green'
-                              ? 'border-accent bg-transparent text-accent'
-                              : ''
-                          }
+                  <Link href={`/assets/${asset.id}`} key={asset.id}>
+                    <Card className="flex flex-col justify-between transition-colors hover:bg-white/5">
+                      <CardHeader className="p-3">
+                        <div className="flex items-start justify-between">
+                          <CardTitle className="text-sm font-medium leading-tight">
+                            {asset.name}
+                          </CardTitle>
+                          <Badge
+                            variant={
+                              asset.threat_level === 'Red'
+                                ? 'destructive'
+                                : 'default'
+                            }
+                            className={
+                              asset.threat_level === 'Green'
+                                ? 'border-accent bg-transparent text-accent'
+                                : ''
+                            }
+                          >
+                            {asset.threat_level}
+                          </Badge>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="p-3 pt-0">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full justify-start text-xs"
                         >
-                          {asset.threat_level}
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="p-3 pt-0">
-                      <Button variant="ghost" size="sm" className="w-full justify-start text-xs">
-                        INTERCEPT
-                      </Button>
-                    </CardContent>
-                  </Card>
+                          INTERCEPT
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Link>
                 ))}
               </div>
             </div>
