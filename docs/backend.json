@@ -14,20 +14,63 @@
           "type": "string",
           "description": "The name of the asset."
         },
-        "status": {
+        "psych_profile": {
           "type": "string",
-          "description": "The status of the asset (e.g., Green, Red)."
+          "format": "json",
+          "description": "A JSON string containing the psychological profile of the asset."
         },
-        "description": {
+        "commercial_niche": {
           "type": "string",
-          "description": "A detailed description of the asset."
+          "description": "The commercial niche of the asset.",
+          "enum": [
+            "Health",
+            "Wealth",
+            "Lifestyle"
+          ]
+        },
+        "threat_level": {
+          "type": "string",
+          "description": "The threat level of the asset.",
+          "enum": [
+            "Green",
+            "Red"
+          ]
         }
       },
       "required": [
         "id",
         "name",
-        "status",
-        "description"
+        "threat_level"
+      ]
+    },
+    "Intercept": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Intercept",
+      "type": "object",
+      "description": "Represents a chat log or communication intercept related to an asset.",
+      "properties": {
+        "asset_id": {
+          "$ref": "#/backend/entities/Asset",
+          "description": "A reference to the Asset this intercept belongs to."
+        },
+        "content": {
+          "type": "string",
+          "description": "The textual content of the intercept."
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The date and time when the intercept occurred."
+        },
+        "sentiment_score": {
+          "type": "number",
+          "description": "A score representing the sentiment of the intercept content."
+        }
+      },
+      "required": [
+        "asset_id",
+        "content",
+        "timestamp"
       ]
     }
   },
@@ -46,16 +89,19 @@
           "schema": {
             "$ref": "#/backend/entities/Asset"
           },
-          "description": "Collection of assets tracked within the Pandora Intelligence System.",
-          "params": [
-            {
-              "name": "assetId",
-              "description": "Unique identifier for the asset."
-            }
-          ]
+          "description": "Collection of assets tracked within the Pandora Intelligence System."
+        }
+      },
+      {
+        "path": "assets/{assetId}/intercepts/{interceptId}",
+        "definition": {
+          "entityName": "Intercept",
+          "schema": {
+            "$ref": "#/backend/entities/Intercept"
+          },
+          "description": "Sub-collection of communication intercepts for a specific asset."
         }
       }
-    ],
-    "reasoning": "Given the application's focus on asset tracking within the Pandora Intelligence System and the requirement for a mobile-first layout with status badges, a straightforward collection-based approach is recommended. We will create a top-level `assets` collection.  \n\nThis structure emphasizes simplicity and avoids unnecessary nesting, which aligns with the mobile-first design principle and improves data accessibility. Authorization is simplified as all assets share the same security requirements, enabling efficient list operations. No denormalization is needed as there are no user-specific permissions required at the asset level. Segregation is applied to the `assets` collection, ensuring all documents within share the same security posture.\n\nQAPs:\n*   The single `assets` collection supports efficient listing of assets for the dashboard. The structure enables secure list operations as all assets share the same access control requirements.\n\nAuthorization Independence:\n*   The simple, flat `assets` collection avoids the need for complex authorization rules involving parent documents. This eliminates `get()` calls and ensures atomic operations."
+    ]
   }
 }
