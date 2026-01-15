@@ -15,15 +15,36 @@ import {
   getDocs,
   query,
   where,
-  serverTimestamp,
   writeBatch,
 } from 'firebase/firestore';
+import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+
 
 type Intercept = {
   asset_id: string;
   content: string;
   timestamp: any;
 };
+
+type MessageToProcess = {
+  sender: string;
+  content: string;
+  timestamp: any;
+};
+
+
+// Helper function to fix character encoding issues in Facebook JSONs
+const decodeFacebookString = (str: string | undefined) => {
+  if (!str) return '';
+  try {
+    // This sequence helps correctly decode mojibake from Facebook's JSON files
+    return decodeURIComponent(escape(str));
+  } catch (e) {
+    // If it fails, return the original string
+    return str;
+  }
+};
+
 
 export default function OpsPage() {
   const { firestore } = useFirebase();
@@ -40,30 +61,31 @@ export default function OpsPage() {
     if (!firestore) throw new Error('Firestore not initialized');
     const assetsCollection = collection(firestore, 'assets');
     const existingAssets = new Map<string, string>();
-    const newAssetNames = new Set<string>();
+    
+    // Correct "Me" to "Joven" and filter out duplicates
+    const correctedNames = [...new Set(names.map(name => name === 'Me' ? 'Joven' : name))];
 
-    const correctedNames = names.map(name => name === 'Me' ? 'Joven' : name);
-
+    // Firestore 'in' queries are limited to 30 values.
     const nameChunks = [];
     for (let i = 0; i < correctedNames.length; i += 30) {
       nameChunks.push(correctedNames.slice(i, i + 30));
     }
 
+    // Find existing assets in chunks
     for (const chunk of nameChunks) {
-        const q = query(assetsCollection, where('name', 'in', chunk));
-        const querySnapshot = await getDocs(q);
-        querySnapshot.forEach(doc => {
-            existingAssets.set(doc.data().name, doc.id);
-        });
+        if(chunk.length > 0) {
+          const q = query(assetsCollection, where('name', 'in', chunk));
+          const querySnapshot = await getDocs(q);
+          querySnapshot.forEach(doc => {
+              existingAssets.set(doc.data().name, doc.id);
+          });
+        }
     }
-
-    correctedNames.forEach(name => {
-      if (!existingAssets.has(name)) {
-        newAssetNames.add(name);
-      }
-    });
     
-    if (newAssetNames.size > 0) {
+    const newAssetNames = correctedNames.filter(name => !existingAssets.has(name));
+
+    // Create new assets if any
+    if (newAssetNames.length > 0) {
         const batch = writeBatch(firestore);
         newAssetNames.forEach(name => {
             const newDocRef = doc(collection(firestore, 'assets'));
@@ -73,10 +95,10 @@ export default function OpsPage() {
         await batch.commit();
     }
 
-    // Create a map from original name to ID
+    // Create a map from original name to ID for the final mapping
     const finalMap = new Map<string, string>();
-    names.forEach((originalName, index) => {
-      const correctedName = correctedNames[index];
+    names.forEach(originalName => {
+      const correctedName = originalName === 'Me' ? 'Joven' : originalName;
       const assetId = existingAssets.get(correctedName);
       if (assetId) {
         finalMap.set(originalName, assetId);
@@ -86,17 +108,8 @@ export default function OpsPage() {
     return finalMap;
 };
 
-  const saveInterceptsBatch = async (intercepts: Intercept[]) => {
-      if (!firestore || intercepts.length === 0) return;
-      const batch = writeBatch(firestore);
-      intercepts.forEach(intercept => {
-          const interceptRef = doc(collection(firestore, `assets/${intercept.asset_id}/intercepts`));
-          batch.set(interceptRef, { ...intercept, timestamp: serverTimestamp() });
-      });
-      await batch.commit();
-  };
-
-  const processMessages = async (messages: {sender: string, content: string, timestamp: any}[]) => {
+  const processMessages = async (messages: MessageToProcess[]) => {
+      if (!firestore) return;
       const totalMessages = messages.length;
       if (totalMessages === 0) {
         setProgress(100);
@@ -107,25 +120,19 @@ export default function OpsPage() {
       const uniqueSenders = [...new Set(messages.map(m => m.sender))];
       const assetMap = await getOrCreateAssets(uniqueSenders);
 
-      const interceptsToSave: Intercept[] = [];
-
+      let processedCount = 0;
+      
       for (const message of messages) {
           const assetId = assetMap.get(message.sender);
           if (assetId && message.content) {
-              interceptsToSave.push({
-                  asset_id: assetId,
-                  content: message.content,
-                  timestamp: message.timestamp,
-              });
+            const interceptRef = collection(firestore, `assets/${assetId}/intercepts`);
+            addDocumentNonBlocking(interceptRef, {
+                asset_id: assetId,
+                content: message.content,
+                timestamp: message.timestamp,
+            });
           }
-      }
-
-      let processedCount = 0;
-      const batchSize = 500;
-      for (let i = 0; i < interceptsToSave.length; i += batchSize) {
-          const batch = interceptsToSave.slice(i, i + batchSize);
-          await saveInterceptsBatch(batch);
-          processedCount += batch.length;
+          processedCount++;
           setProgress((processedCount / totalMessages) * 100);
       }
 
@@ -146,16 +153,14 @@ export default function OpsPage() {
     
     if (file.name.endsWith('.csv')) {
       Papa.parse(file, {
-        worker: true,
-        header: false,
+        header: true,
         skipEmptyLines: true,
         complete: async (results) => {
-          const rows = results.data as string[][];
-          // Skip header row
-          const messages = rows.slice(1).map(row => ({
-            sender: row[2], // 'Name' column
-            content: row[3], // 'Message' column
-            timestamp: row[0], // 'Date' column
+          const rows = results.data as { Date: string; Time: string; Name: string; Message: string }[];
+          const messages = rows.map(row => ({
+            sender: row.Name,
+            content: row.Message,
+            timestamp: new Date(`${row.Date} ${row.Time}`),
           })).filter(m => m.sender && m.content);
           await processMessages(messages);
         },
@@ -171,7 +176,7 @@ export default function OpsPage() {
           f.name.endsWith('message_1.json') && !f.dir
         );
         
-        let allMessages: {sender_name: string, content: string, timestamp_ms: number}[] = [];
+        let allMessages: {sender_name: string, content?: string, timestamp_ms: number}[] = [];
         for (const file of messageFiles) {
             const content = await file.async('string');
             const chatData = JSON.parse(content);
@@ -181,8 +186,8 @@ export default function OpsPage() {
         }
         
         const messagesToProcess = allMessages.map(message => ({
-            sender: message.sender_name,
-            content: message.content,
+            sender: decodeFacebookString(message.sender_name),
+            content: decodeFacebookString(message.content),
             timestamp: new Date(message.timestamp_ms),
         })).filter(m => m.sender && m.content);
   
@@ -191,6 +196,27 @@ export default function OpsPage() {
         console.error("Error processing zip file:", error);
         setIsProcessing(false);
       }
+    } else if (file.name.endsWith('.json')) {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const text = e.target?.result as string;
+          const chatData = JSON.parse(text);
+          let messagesToProcess: MessageToProcess[] = [];
+          if (chatData.messages) {
+            messagesToProcess = chatData.messages.map((message: { sender_name: string, content?: string, timestamp_ms: number }) => ({
+                sender: decodeFacebookString(message.sender_name),
+                content: decodeFacebookString(message.content),
+                timestamp: new Date(message.timestamp_ms),
+            })).filter((m: MessageToProcess) => m.sender && m.content);
+          }
+          await processMessages(messagesToProcess);
+        } catch (error) {
+          console.error("Error processing JSON file:", error);
+          setIsProcessing(false);
+        }
+      };
+      reader.readAsText(file);
     } else {
       console.error('Unsupported file type');
       setIsProcessing(false);
@@ -214,7 +240,7 @@ export default function OpsPage() {
           ref={fileInputRef}
           onChange={handleFileChange}
           className="hidden"
-          accept=".csv,.zip"
+          accept=".csv,.zip,.json"
           disabled={isProcessing}
         />
         <Button
