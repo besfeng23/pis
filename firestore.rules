@@ -1,0 +1,70 @@
+/**
+ * This ruleset enforces a secure, read-only model for an internal asset tracking system.
+ *
+ * Core Philosophy:
+ * The primary security goal is to allow any authenticated user within the system to view and list all assets,
+ * reflecting the need for shared intelligence. However, write access (creating, updating, deleting assets) is
+ * currently disabled as a secure-by-default measure. This prevents unauthorized data modification until a
+ * proper ownership or role-based model is defined in the data schema.
+ *
+ * Data Structure:
+ * The data is organized into a single, top-level collection:
+ * - /assets/{assetId}: Stores all asset documents.
+ *
+ * Key Security Decisions:
+ * - Authenticated Read-Only: Any user who is signed in (including via anonymous authentication) can read
+ *   individual assets and perform list queries on the entire 'assets' collection. This supports the
+ *   application's dashboard and mobile-first listing requirements.
+ * - Write Operations Disabled: All write operations (`create`, `update`, `delete`) are explicitly denied.
+ *   This is a critical security measure because the 'Asset' data model currently lacks an 'ownerId' or
+ *   'authorId' field, making it impossible to securely determine who is authorized to modify a given asset.
+ * - No User-Specific Data: The ruleset assumes no data is user-private. All assets are treated as
+ *   system-wide resources.
+ *
+ * Denormalization for Authorization:
+ * No denormalization is currently necessary as the ruleset does not yet support writes. To enable secure
+ * writes in the future, it is highly recommended to denormalize an ownership field (e.g., `ownerId: "user-uid"`)
+ * directly onto each asset document. This will allow for simple, performant, and secure validation rules.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper Functions
+
+    /**
+     * Returns true if the user is authenticated.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * @description
+     *   Allows any authenticated user to read assets but denies all write operations.
+     *   Writes are disabled as a security measure because the Asset data model lacks an
+     *   ownership field (e.g., 'ownerId'), making secure authorization impossible.
+     * @path
+     *   /assets/{assetId}
+     * @allow
+     *   An authenticated user reads an asset: (get) /assets/asset123
+     * @deny
+     *   An authenticated user tries to create an asset: (create) /assets/asset123
+     * @principle
+     *   Secure-by-default posture. Disables all modifications on a collection with
+     *   shared read access until a secure authorization mechanism (like document ownership)
+     *   is implemented in the data schema.
+     */
+    match /assets/{assetId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+
+      // CRITICAL: Cannot implement owner-only writes. The 'Asset' entity is missing an 'ownerId' or 'authorId' field.
+      // Prototyping Mode: Writes are disabled to maintain a secure-by-default posture.
+      // To enable writes, add an ownership field to the Asset entity and update the rules below.
+      allow create: if false; // TODO: Add owner validation once the schema is updated with an ownership field.
+      allow update: if false; // TODO: Add owner validation once the schema is updated with an ownership field.
+      allow delete: if false; // TODO: Add owner validation once the schema is updated with an ownership field.
+    }
+  }
+}

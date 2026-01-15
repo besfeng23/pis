@@ -1,0 +1,61 @@
+{
+  "entities": {
+    "Asset": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Asset",
+      "type": "object",
+      "description": "Represents an asset tracked within the Pandora Intelligence System.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Asset entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the asset."
+        },
+        "status": {
+          "type": "string",
+          "description": "The status of the asset (e.g., Green, Red)."
+        },
+        "description": {
+          "type": "string",
+          "description": "A detailed description of the asset."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "status",
+        "description"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "assets/{assetId}",
+        "definition": {
+          "entityName": "Asset",
+          "schema": {
+            "$ref": "#/backend/entities/Asset"
+          },
+          "description": "Collection of assets tracked within the Pandora Intelligence System.",
+          "params": [
+            {
+              "name": "assetId",
+              "description": "Unique identifier for the asset."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "Given the application's focus on asset tracking within the Pandora Intelligence System and the requirement for a mobile-first layout with status badges, a straightforward collection-based approach is recommended. We will create a top-level `assets` collection.  \n\nThis structure emphasizes simplicity and avoids unnecessary nesting, which aligns with the mobile-first design principle and improves data accessibility. Authorization is simplified as all assets share the same security requirements, enabling efficient list operations. No denormalization is needed as there are no user-specific permissions required at the asset level. Segregation is applied to the `assets` collection, ensuring all documents within share the same security posture.\n\nQAPs:\n*   The single `assets` collection supports efficient listing of assets for the dashboard. The structure enables secure list operations as all assets share the same access control requirements.\n\nAuthorization Independence:\n*   The simple, flat `assets` collection avoids the need for complex authorization rules involving parent documents. This eliminates `get()` calls and ensures atomic operations."
+  }
+}
