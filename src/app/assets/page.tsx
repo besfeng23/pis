@@ -1,7 +1,6 @@
 'use client';
 
-import { useCollection, useFirebase } from '@/firebase';
-import { useMemo } from 'react';
+import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
 import { collection } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -21,7 +20,7 @@ type Asset = {
 export default function AssetsPage() {
   const { firestore } = useFirebase();
 
-  const assetsCollection = useMemo(
+  const assetsCollection = useMemoFirebase(
     () => (firestore ? collection(firestore, 'assets') : null),
     [firestore]
   );
