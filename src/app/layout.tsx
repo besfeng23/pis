@@ -18,7 +18,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${GeistMono.variable} dark`}>
       <head></head>
-      <body className="font-body antialiased">
+      <body className="font-mono antialiased">
         <FirebaseClientProvider>
           <div className="relative flex min-h-screen flex-col">
             <main className="flex-1 pb-20">{children}</main>

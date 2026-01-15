@@ -10,9 +10,7 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        body: ['var(--font-geist-mono)', 'monospace'],
-        headline: ['var(--font-geist-mono)', 'monospace'],
-        code: ['var(--font-geist-mono)', 'monospace'],
+        mono: ['var(--font-geist-mono)', 'monospace'],
       },
       colors: {
         background: 'hsl(var(--background))',
