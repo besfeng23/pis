@@ -25,7 +25,8 @@
           "enum": [
             "Health",
             "Wealth",
-            "Lifestyle"
+            "Lifestyle",
+            "Relationships"
           ]
         },
         "threat_level": {
