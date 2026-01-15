@@ -42,9 +42,11 @@ export default function OpsPage() {
     const existingAssets = new Map<string, string>();
     const newAssetNames = new Set<string>();
 
+    const correctedNames = names.map(name => name === 'Me' ? 'Joven' : name);
+
     const nameChunks = [];
-    for (let i = 0; i < names.length; i += 30) {
-      nameChunks.push(names.slice(i, i + 30));
+    for (let i = 0; i < correctedNames.length; i += 30) {
+      nameChunks.push(correctedNames.slice(i, i + 30));
     }
 
     for (const chunk of nameChunks) {
@@ -55,7 +57,7 @@ export default function OpsPage() {
         });
     }
 
-    names.forEach(name => {
+    correctedNames.forEach(name => {
       if (!existingAssets.has(name)) {
         newAssetNames.add(name);
       }
@@ -71,7 +73,17 @@ export default function OpsPage() {
         await batch.commit();
     }
 
-    return existingAssets;
+    // Create a map from original name to ID
+    const finalMap = new Map<string, string>();
+    names.forEach((originalName, index) => {
+      const correctedName = correctedNames[index];
+      const assetId = existingAssets.get(correctedName);
+      if (assetId) {
+        finalMap.set(originalName, assetId);
+      }
+    });
+
+    return finalMap;
 };
 
   const saveInterceptsBatch = async (intercepts: Intercept[]) => {
