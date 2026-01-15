@@ -91,6 +91,7 @@ const generatePsychProfileFlow = ai.defineFlow(
     name: 'generatePsychProfileFlow',
     inputSchema: GeneratePsychProfileInputSchema,
     outputSchema: GeneratePsychProfileOutputSchema,
+    timeout: 60000, // 60 seconds
   },
   async input => {
     const {output} = await prompt(input, {
