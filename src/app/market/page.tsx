@@ -10,7 +10,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Bot } from 'lucide-react';
 
 type Asset = {
   id: string;
@@ -44,14 +43,17 @@ export default function MarketPage() {
     columnTitle: Asset['commercial_niche'] | 'Uncategorized'
   ) => {
     if (!assets) return [];
+    
+    const filteredAssets = assets.filter(asset => asset.name);
+
     if (columnTitle === 'Uncategorized') {
-      return assets.filter(
+      return filteredAssets.filter(
         asset =>
           !asset.commercial_niche ||
           !columns.some(c => c.title === asset.commercial_niche)
       );
     }
-    return assets.filter(asset => asset.commercial_niche === columnTitle);
+    return filteredAssets.filter(asset => asset.commercial_niche === columnTitle);
   };
 
   return (
@@ -67,6 +69,10 @@ export default function MarketPage() {
       {isLoading ? (
         <div className="flex flex-1 items-center justify-center">
           <p className="text-muted-foreground">Loading market assets...</p>
+        </div>
+      ) : !assets || assets.length === 0 ? (
+        <div className="flex flex-1 items-center justify-center rounded-lg border-2 border-dashed border-border">
+          <p className="text-muted-foreground">Waiting for Intel...</p>
         </div>
       ) : (
         <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
@@ -105,8 +111,7 @@ export default function MarketPage() {
                     </CardHeader>
                     <CardContent className="p-3 pt-0">
                       <Button variant="ghost" size="sm" className="w-full justify-start text-xs">
-                        <Bot className="mr-2 h-4 w-4" />
-                        Generate Intercept
+                        INTERCEPT
                       </Button>
                     </CardContent>
                   </Card>
