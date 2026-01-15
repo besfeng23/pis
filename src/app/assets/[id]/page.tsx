@@ -2,7 +2,7 @@
 
 import { useParams } from 'next/navigation';
 import { useDoc, useCollection, useFirebase, useMemoFirebase } from '@/firebase';
-import { collection, doc, query, orderBy, limit, getDocs } from 'firebase/firestore';
+import { collection, doc, query, orderBy, getDocs } from 'firebase/firestore';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -134,18 +134,17 @@ export default function AssetDetailPage() {
     setIsGeneratingCounterMeasures(true);
     setGeneratedCounterMeasures(null);
     try {
-      // Fetch last 15 messages
-      const recentInterceptsQuery = query(
+      // Fetch the entire conversation history, sorted oldest to newest
+      const fullHistoryQuery = query(
         collection(firestore, 'assets', id, 'intercepts'),
-        orderBy('timestamp', 'desc'),
-        limit(15)
+        orderBy('timestamp', 'asc')
       );
-      const snapshot = await getDocs(recentInterceptsQuery);
-      const recentMessages = snapshot.docs.map(doc => doc.data().content as string);
+      const snapshot = await getDocs(fullHistoryQuery);
+      const fullHistoryMessages = snapshot.docs.map(doc => doc.data().content as string);
 
       const result = await generateCounterMeasures({
         assetName: asset.name,
-        recentMessages: recentMessages.reverse(), // Reverse to get chronological order
+        recentMessages: fullHistoryMessages,
       });
       setGeneratedCounterMeasures(result);
     } catch (error) {
@@ -158,6 +157,7 @@ export default function AssetDetailPage() {
     }
     setIsGeneratingCounterMeasures(false);
   };
+
 
   const handleCopyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -472,7 +472,7 @@ export default function AssetDetailPage() {
               <DialogHeader>
                 <DialogTitle>Generated Counter-Measures for {asset.name}</DialogTitle>
                 <DialogDescription>
-                  Based on the last 15 messages, here are three strategic options.
+                  Based on the entire message history, here are three strategic options.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
