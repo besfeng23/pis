@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { UploadCloud } from 'lucide-react';
+import { UploadCloud, Bot } from 'lucide-react';
 import Papa from 'papaparse';
 import JSZip from 'jszip';
 import {
@@ -14,8 +14,8 @@ import {
   doc,
   getDocs,
   query,
-  where,
   writeBatch,
+  updateDoc
 } from 'firebase/firestore';
 import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
@@ -50,6 +50,8 @@ export default function OpsPage() {
   const { firestore } = useFirebase();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisLog, setAnalysisLog] = useState<string[]>([]);
   const [progress, setProgress] = useState(0);
   const [messageCount, setMessageCount] = useState(0);
 
@@ -223,6 +225,65 @@ export default function OpsPage() {
     }
   };
 
+  const handleDeepAnalysis = async () => {
+    if (!firestore) return;
+    setIsAnalyzing(true);
+    setAnalysisLog([]);
+
+    const keywords = {
+      Wealth: ['crypto', 'bitcoin', 'business', 'hiring', 'investment', 'stocks', 'revenue'],
+      Health: ['gym', 'workout', 'diet', 'tired', 'pain', 'supplement', 'doctor'],
+      Lifestyle: ['travel', 'hotel', 'flight', 'party', 'dinner', 'concert'],
+      Critical: ['hate', 'debt', 'borrow', 'angry', 'blocked'],
+    };
+
+    const assetsSnapshot = await getDocs(collection(firestore, 'assets'));
+
+    for (const assetDoc of assetsSnapshot.docs) {
+      const asset = assetDoc.data();
+      const assetId = assetDoc.id;
+      const interceptsRef = collection(firestore, `assets/${assetId}/intercepts`);
+      const interceptsSnapshot = await getDocs(interceptsRef);
+
+      const scores = { Wealth: 0, Health: 0, Lifestyle: 0, Critical: 0 };
+
+      for (const interceptDoc of interceptsSnapshot.docs) {
+        const intercept = interceptDoc.data();
+        const content = (intercept.content || '').toLowerCase();
+
+        for (const category in keywords) {
+          for (const keyword of keywords[category as keyof typeof keywords]) {
+            if (content.includes(keyword)) {
+              scores[category as keyof typeof scores]++;
+            }
+          }
+        }
+      }
+
+      const nicheScores = {
+        Wealth: scores.Wealth,
+        Health: scores.Health,
+        Lifestyle: scores.Lifestyle,
+      };
+
+      const topNiche = Object.keys(nicheScores).reduce((a, b) =>
+        nicheScores[a as keyof typeof nicheScores] > nicheScores[b as keyof typeof nicheScores] ? a : b
+      ) as 'Wealth' | 'Health' | 'Lifestyle';
+
+      const threatLevel = scores.Critical > 0 ? 'Red' : 'Green';
+
+      const assetRef = doc(firestore, 'assets', assetId);
+      await updateDoc(assetRef, {
+        commercial_niche: topNiche,
+        threat_level: threatLevel,
+      });
+
+      setAnalysisLog(prev => [...prev, `> Analyzed ${asset.name}: Assigned to ${topNiche} Sector. Threat level: ${threatLevel}`]);
+    }
+
+    setIsAnalyzing(false);
+  };
+
   return (
     <div className="p-4 md:p-6">
       <header className="mb-6">
@@ -241,13 +302,13 @@ export default function OpsPage() {
           onChange={handleFileChange}
           className="hidden"
           accept=".csv,.zip,.json"
-          disabled={isProcessing}
+          disabled={isProcessing || isAnalyzing}
         />
         <Button
           onClick={handleUploadClick}
           size="lg"
           className="w-full max-w-xs"
-          disabled={isProcessing}
+          disabled={isProcessing || isAnalyzing}
         >
           <UploadCloud className="mr-2 h-6 w-6" />
           Upload Intel
@@ -266,6 +327,34 @@ export default function OpsPage() {
           </div>
         )}
       </div>
+
+      <div className="mt-8 flex flex-col items-center justify-center space-y-6 rounded-lg border-2 border-dashed border-border p-8">
+        <Button
+          onClick={handleDeepAnalysis}
+          size="lg"
+          variant="outline"
+          className="w-full max-w-xs"
+          disabled={isProcessing || isAnalyzing}
+        >
+          <Bot className="mr-2 h-6 w-6" />
+          EXECUTE PROFILING
+        </Button>
+        {isAnalyzing && (
+            <div className="w-full max-w-md text-center">
+                <p className="mb-2 text-sm text-accent">ANALYZING ASSETS...</p>
+                <Progress value={analysisLog.length / 1 * 100} className="h-2 [&>div]:bg-accent" />
+             </div>
+        )}
+         {analysisLog.length > 0 && (
+          <div className="mt-4 w-full max-w-md rounded-lg bg-black p-4 font-mono text-xs text-green-400">
+            {analysisLog.map((log, index) => (
+              <div key={index}>{log}</div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
+
+    
