@@ -73,6 +73,37 @@
         "content",
         "timestamp"
       ]
+    },
+    "IngestionLog": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Ingestion Log",
+      "type": "object",
+      "description": "Represents a log entry for a file ingestion process.",
+      "properties": {
+        "filename": {
+          "type": "string",
+          "description": "The name of the ingested file."
+        },
+        "status": {
+          "type": "string",
+          "description": "The current status of the ingestion.",
+          "enum": ["PENDING", "PROCESSING", "COMPLETED", "ERROR"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the log was created."
+        },
+        "interceptCount": {
+          "type": "number",
+          "description": "Number of intercepts created from the file."
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the ingestion failed."
+        }
+      },
+      "required": ["filename", "status", "createdAt"]
     }
   },
   "auth": {
@@ -101,6 +132,16 @@
             "$ref": "#/backend/entities/Intercept"
           },
           "description": "Sub-collection of communication intercepts for a specific asset."
+        }
+      },
+      {
+        "path": "ingestion_logs/{logId}",
+        "definition": {
+          "entityName": "IngestionLog",
+          "schema": {
+            "$ref": "#/backend/entities/IngestionLog"
+          },
+          "description": "Collection of logs for file ingestion processes."
         }
       }
     ]

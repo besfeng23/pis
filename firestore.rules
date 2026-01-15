@@ -18,5 +18,9 @@ service cloud.firestore {
       allow create: if isSignedIn();
       allow write: if isSignedIn();
     }
+
+    match /ingestion_logs/{logId} {
+      allow read: if isSignedIn();
+    }
   }
 }
