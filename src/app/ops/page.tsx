@@ -238,73 +238,71 @@ export default function OpsPage() {
   const handleDeepAnalysis = async () => {
     if (!firestore) return;
     setIsAnalyzing(true);
-    setAnalysisLog([]);
+    setAnalysisLog(['> Starting deep analysis sweep...']);
     setProgress(0);
 
-    const assetsSnapshot = await getDocs(collection(firestore, 'assets'));
-    const totalAssets = assetsSnapshot.docs.length;
-    let assetsProcessed = 0;
+    try {
+      const assetsSnapshot = await getDocs(collection(firestore, 'assets'));
+      const totalAssets = assetsSnapshot.docs.length;
+      let assetsProcessed = 0;
 
-    for (const assetDoc of assetsSnapshot.docs) {
-      const asset = assetDoc.data();
-      const assetId = assetDoc.id;
-      const interceptsRef = collection(firestore, `assets/${assetId}/intercepts`);
-      const interceptsSnapshot = await getDocs(interceptsRef);
-
-      const messageHistory = interceptsSnapshot.docs.map(doc => doc.data().content as string);
-
-      if (messageHistory.length > 0) {
-        try {
-          const psychProfile = await generatePsychProfile({ messageHistory });
-
-          const keywords = {
-            Wealth: ['crypto', 'bitcoin', 'business', 'hiring', 'investment', 'stocks', 'revenue'],
-            Health: ['gym', 'workout', 'diet', 'tired', 'pain', 'supplement', 'doctor'],
-            Lifestyle: ['travel', 'hotel', 'flight', 'party', 'dinner', 'concert'],
-            Critical: ['hate', 'debt', 'borrow', 'angry', 'blocked'],
-          };
-          const scores = { Wealth: 0, Health: 0, Lifestyle: 0, Critical: 0 };
-          for (const message of messageHistory) {
-            const content = message.toLowerCase();
-            for (const category in keywords) {
-              for (const keyword of keywords[category as keyof typeof keywords]) {
-                if (content.includes(keyword)) {
-                  scores[category as keyof typeof scores]++;
-                }
-              }
-            }
-          }
-          const nicheScores = {
-            Wealth: scores.Wealth,
-            Health: scores.Health,
-            Lifestyle: scores.Lifestyle,
-          };
-          const topNiche = Object.keys(nicheScores).reduce((a, b) =>
-            nicheScores[a as keyof typeof nicheScores] > nicheScores[b as keyof typeof nicheScores] ? a : b
-          ) as 'Wealth' | 'Health' | 'Lifestyle';
-          const threatLevel = scores.Critical > 0 ? 'Red' : 'Green';
-
-          const assetRef = doc(firestore, 'assets', assetId);
-          await updateDoc(assetRef, {
-            commercial_niche: topNiche,
-            threat_level: threatLevel,
-            psych_profile: JSON.stringify(psychProfile),
-          });
-
-          setAnalysisLog(prev => [
-            ...prev,
-            `> Analyzed ${asset.name}: Assigned to ${topNiche}. Status: ${psychProfile.operationalStatus}`,
-          ]);
-        } catch (error) {
-          console.error(`Failed to analyze ${asset.name}:`, error);
-          setAnalysisLog(prev => [...prev, `> FAILED to analyze ${asset.name}. See console for details.`]);
-        }
-      } else {
-        setAnalysisLog(prev => [...prev, `> Skipped ${asset.name}: No message history.`]);
+      if (totalAssets === 0) {
+        setAnalysisLog(prev => [...prev, '> No assets found to analyze.']);
+        setIsAnalyzing(false);
+        return;
       }
 
-      assetsProcessed++;
-      setProgress((assetsProcessed / totalAssets) * 100);
+      for (const assetDoc of assetsSnapshot.docs) {
+        const asset = assetDoc.data();
+        const assetId = assetDoc.id;
+        
+        setAnalysisLog(prev => [...prev, `> Analyzing ${asset.name} (${assetsProcessed + 1}/${totalAssets})...`]);
+
+        const interceptsRef = collection(firestore, `assets/${assetId}/intercepts`);
+        const interceptsSnapshot = await getDocs(interceptsRef);
+        const messageHistory = interceptsSnapshot.docs.map(doc => doc.data().content as string);
+
+        if (messageHistory.length > 0) {
+          try {
+            const analysisResult = await generatePsychProfile({ messageHistory });
+
+            const assetRef = doc(firestore, 'assets', assetId);
+            await updateDoc(assetRef, {
+              commercial_niche: analysisResult.market.niche,
+              threat_level: analysisResult.psych.threat_level,
+              psych_profile: JSON.stringify(analysisResult.psych.swot_analysis), // Storing SWOT as JSON string
+              estimatedValue: analysisResult.market.lead_value,
+            });
+
+            setAnalysisLog(prev => prev.map(log => 
+              log.startsWith(`> Analyzing ${asset.name}`) 
+                ? `> ✔️ ${asset.name}: Niche: ${analysisResult.market.niche}, Threat: ${analysisResult.psych.threat_level}`
+                : log
+            ));
+
+          } catch (error) {
+            console.error(`Failed to analyze ${asset.name}:`, error);
+            setAnalysisLog(prev => prev.map(log => 
+              log.startsWith(`> Analyzing ${asset.name}`)
+                ? `> ❌ FAILED to analyze ${asset.name}. See console.`
+                : log
+            ));
+          }
+        } else {
+           setAnalysisLog(prev => prev.map(log => 
+              log.startsWith(`> Analyzing ${asset.name}`)
+                ? `> 🟡 Skipped ${asset.name}: No message history.`
+                : log
+            ));
+        }
+
+        assetsProcessed++;
+        setProgress((assetsProcessed / totalAssets) * 100);
+      }
+      setAnalysisLog(prev => [...prev, '> Deep analysis sweep complete.']);
+    } catch (error) {
+      console.error("Error during deep analysis:", error);
+      setAnalysisLog(prev => [...prev, `> FATAL ERROR during sweep. Check console.`]);
     }
 
     setIsAnalyzing(false);
@@ -382,7 +380,7 @@ export default function OpsPage() {
           disabled={isProcessing || isAnalyzing}
         >
           <Bot className="mr-2 h-6 w-6" />
-          EXECUTE PROFILING
+          RUN DEEP ANALYSIS
         </Button>
         {isAnalyzing && (
           <div className="w-full max-w-md text-center">
@@ -391,7 +389,7 @@ export default function OpsPage() {
           </div>
         )}
         {analysisLog.length > 0 && (
-          <div className="mt-4 w-full max-w-md rounded-lg bg-black p-4 font-mono text-xs text-green-400">
+          <div className="mt-4 w-full max-w-2xl rounded-lg bg-black p-4 font-mono text-xs text-green-400 max-h-64 overflow-y-auto">
             {analysisLog.map((log, index) => (
               <div key={index}>{log}</div>
             ))}
@@ -401,5 +399,3 @@ export default function OpsPage() {
     </div>
   );
 }
-
-    

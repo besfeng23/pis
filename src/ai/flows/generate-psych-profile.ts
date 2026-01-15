@@ -1,6 +1,6 @@
 'use server';
 /**
- * @fileOverview Generates a psychological profile based on an asset's entire message history.
+ * @fileOverview Generates a psychological and market profile based on an asset's entire message history.
  *
  * - generatePsychProfile - A function that handles the profile generation.
  * - GeneratePsychProfileInput - The input type for the generatePsychProfile function.
@@ -22,19 +22,32 @@ export type GeneratePsychProfileInput = z.infer<
   typeof GeneratePsychProfileInputSchema
 >;
 
+const SWOTAnalysisSchema = z.object({
+    tacticalAssets: z
+      .array(z.string())
+      .describe('Strengths and shared bonds that build rapport.'),
+    vulnerabilities: z
+      .array(z.string())
+      .describe('Topics or behaviors that cause friction and conflict.'),
+    riskFactors: z
+      .array(z.string())
+      .describe('Factors that increase the probability of churn or ghosting.'),
+    operationalStatus: z
+      .string()
+      .describe('The current standing of the relationship: "Secure" or "Compromised".'),
+  });
+
 const GeneratePsychProfileOutputSchema = z.object({
-  tacticalAssets: z
-    .array(z.string())
-    .describe('Strengths and shared bonds that build rapport.'),
-  vulnerabilities: z
-    .array(z.string())
-    .describe('Topics or behaviors that cause friction and conflict.'),
-  riskFactors: z
-    .array(z.string())
-    .describe('Factors that increase the probability of churn or ghosting.'),
-  operationalStatus: z
-    .string()
-    .describe('The current standing of the relationship: "Secure" or "Compromised".'),
+  psych: z.object({
+    threat_level: z.enum(['Green', 'Red']).describe("The asset's current threat level based on communication analysis."),
+    attachment_style: z.string().describe("The asset's likely attachment style (e.g., Secure, Anxious, Avoidant)."),
+    swot_analysis: SWOTAnalysisSchema,
+  }),
+  market: z.object({
+    niche: z.enum(['Health', 'Wealth', 'Lifestyle', 'Relationships', 'Uncategorized']).describe("The primary commercial niche identified from the conversation."),
+    estimated_spending_power: z.string().describe("An estimate of the asset's spending power (e.g., Low, Medium, High)."),
+    lead_value: z.number().describe("An estimated monetary value of this asset as a lead."),
+  }),
 });
 export type GeneratePsychProfileOutput = z.infer<
   typeof GeneratePsychProfileOutputSchema
@@ -50,18 +63,27 @@ const prompt = ai.definePrompt({
   name: 'generatePsychProfilePrompt',
   input: {schema: GeneratePsychProfileInputSchema},
   output: {schema: GeneratePsychProfileOutputSchema},
-  prompt: `You are a conflict resolution and relationship analyst. Based on the following message history, generate a summary for improving communication.
+  prompt: `You are a conflict resolution and relationship analyst. Analyze this chat history. Return a JSON object with a 'psych' and 'market' profile.
 
 Message History:
 {{#each messageHistory}}
 - {{{this}}}
 {{/each}}
 
-Provide the following analysis:
-- **Tactical Assets:** What are the core strengths and shared bonds in this relationship?
-- **Vulnerabilities:** What topics or behaviors consistently lead to friction?
-- **Risk Factors:** What are the key indicators or risks that could lead to the relationship ending?
-- **Operational Status:** Based on the overall tone, is the relationship currently "Secure" or "Compromised"?`,
+Based on the analysis, provide the following JSON structure:
+
+- **psych**:
+  - **threat_level**: Determine if the overall sentiment and conflict level suggests 'Green' (stable) or 'Red' (critical).
+  - **attachment_style**: Infer the subject's likely attachment style.
+  - **swot_analysis**:
+    - **tacticalAssets**: Core strengths and shared bonds in this relationship.
+    - **vulnerabilities**: Topics/behaviors that consistently lead to friction.
+    - **riskFactors**: Key indicators that could lead to the relationship ending.
+    - **operationalStatus**: Is the relationship currently "Secure" or "Compromised"?
+- **market**:
+  - **niche**: Categorize the conversation into 'Health', 'Wealth', 'Lifestyle', 'Relationships', or 'Uncategorized'.
+  - **estimated_spending_power**: Estimate spending power as 'Low', 'Medium', or 'High'.
+  - **lead_value**: Estimate the potential monetary value of this person as a business lead.`,
 });
 
 const generatePsychProfileFlow = ai.defineFlow(
