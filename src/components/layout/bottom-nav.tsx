@@ -3,18 +3,18 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  BookUser,
-  Store,
-  Activity,
-  Network as NetworkIcon,
+  Home,
+  KanbanSquare,
+  Users,
+  Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
-  { href: '/', label: 'Dossiers', icon: BookUser },
-  { href: '/market', label: 'Market', icon: Store },
-  { href: '/ops', label: 'Ops', icon: Activity },
-  { href: '/network', label: 'Network', icon: NetworkIcon },
+  { href: '/', label: 'INTEL', icon: Home },
+  { href: '/market', label: 'MARKET', icon: KanbanSquare },
+  { href: '/assets', label: 'ASSETS', icon: Users },
+  { href: '/ops', label: 'OPS', icon: Settings },
 ];
 
 export default function BottomNav() {
@@ -39,7 +39,7 @@ export default function BottomNav() {
               )}
             >
               <item.icon className="mb-1 h-6 w-6" />
-              <span className="text-xs">{item.label}</span>
+              <span className="text-xs tracking-widest">{item.label}</span>
             </Link>
           );
         })}
