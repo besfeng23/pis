@@ -21,7 +21,9 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { useState } from 'react';
-import { summarizeDossier } from '@/ai/flows/summarize-dossier';
+import { generateIntercepts } from '@/ai/flows/generate-intercepts';
+import { Copy } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 type Asset = {
   id: string;
@@ -38,12 +40,20 @@ type PsychProfile = {
   active_needs: string[];
 };
 
+type InterceptDrafts = {
+  draftA: string;
+  draftB: string;
+  draftC: string;
+};
+
 export default function AssetDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const { firestore } = useFirebase();
+  const { toast } = useToast();
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedIntercepts, setGeneratedIntercepts] = useState<string[]>([]);
+  const [generatedIntercepts, setGeneratedIntercepts] =
+    useState<InterceptDrafts | null>(null);
 
   const assetRef = useMemoFirebase(
     () => (firestore && id ? doc(firestore, 'assets', id) : null),
@@ -57,23 +67,33 @@ export default function AssetDetailPage() {
     : null;
 
   const handleGenerateIntercept = async () => {
-    if (!asset || !psychProfile) return;
+    if (!asset) return;
     setIsGenerating(true);
-    setGeneratedIntercepts([]);
+    setGeneratedIntercepts(null);
     try {
-      const needs = psychProfile.active_needs.join(', ');
-      const dossierContent = `Generate 3 distinct, short, and compelling messages to send to ${asset.name}. The messages should subtly target their active needs which are: ${needs}. The goal is to initiate a conversation. Frame them as if you are a helpful acquaintance.`;
-      const result = await summarizeDossier({ dossierContent });
-      // The AI will likely return a numbered or bulleted list in a single string.
-      const intercepts = result.summary
-        .split(/\n\d\.\s|\n-\s|\n\*\s/)
-        .map(s => s.trim())
-        .filter(Boolean);
-      setGeneratedIntercepts(intercepts);
+      const result = await generateIntercepts({
+        assetName: asset.name,
+        assetNiche: asset.commercial_niche,
+        threatLevel: asset.threat_level,
+        activeNeeds: psychProfile?.active_needs,
+      });
+      setGeneratedIntercepts(result);
     } catch (error) {
       console.error('Failed to generate intercepts:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error Generating Intercepts',
+        description: 'Could not connect to the AI service.',
+      });
     }
     setIsGenerating(false);
+  };
+
+  const handleCopyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast({
+      title: 'Copied to Clipboard',
+    });
   };
 
   if (isLoading) {
@@ -205,20 +225,64 @@ export default function AssetDetailPage() {
               <DialogTitle>Generated Intercepts for {asset.name}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              {generatedIntercepts.length > 0 ? (
-                generatedIntercepts.map((intercept, i) => (
-                  <Card key={i} className="bg-muted/50">
-                    <CardContent className="p-4">
-                      <p>{intercept}</p>
+              {isGenerating && <p>AI is drafting messages...</p>}
+              {generatedIntercepts && (
+                <div className="flex flex-col gap-4">
+                  <Card className="bg-muted/50">
+                    <CardHeader className="flex-row items-center justify-between p-3">
+                      <CardTitle className="text-base">Alpha Draft</CardTitle>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() =>
+                          handleCopyToClipboard(generatedIntercepts.draftA)
+                        }
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </CardHeader>
+                    <CardContent className="p-3 pt-0">
+                      <p>{generatedIntercepts.draftA}</p>
                     </CardContent>
                   </Card>
-                ))
-              ) : (
-                <p>
-                  {isGenerating
-                    ? 'AI is drafting messages...'
-                    : 'Could not generate intercepts.'}
-                </p>
+                  <Card className="bg-muted/50">
+                    <CardHeader className="flex-row items-center justify-between p-3">
+                      <CardTitle className="text-base">Bravo Draft</CardTitle>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() =>
+                          handleCopyToClipboard(generatedIntercepts.draftB)
+                        }
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </CardHeader>
+                    <CardContent className="p-3 pt-0">
+                      <p>{generatedIntercepts.draftB}</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-muted/50">
+                    <CardHeader className="flex-row items-center justify-between p-3">
+                      <CardTitle className="text-base">Proxy Draft</CardTitle>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() =>
+                          handleCopyToClipboard(generatedIntercepts.draftC)
+                        }
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </CardHeader>
+                    <CardContent className="p-3 pt-0">
+                      <p>{generatedIntercepts.draftC}</p>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+              {!isGenerating && !generatedIntercepts && (
+                <p>Could not generate intercepts.</p>
               )}
             </div>
           </DialogContent>
