@@ -8,12 +8,15 @@ service cloud.firestore {
 
     match /assets/{assetId} {
       allow read: if isSignedIn();
-      allow write: if false; 
+      // Allow creation and update for signed-in users
+      allow write: if isSignedIn(); 
     }
 
     match /assets/{assetId}/intercepts/{interceptId} {
       allow read: if isSignedIn();
-      allow write: if false;
+      // Allow creation of intercepts for signed-in users
+      allow create: if isSignedIn();
+      allow write: if isSignedIn();
     }
   }
 }
