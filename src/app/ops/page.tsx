@@ -62,8 +62,8 @@ export default function OpsPage() {
     const assetsCollection = collection(firestore, 'assets');
     const existingAssets = new Map<string, string>();
     
-    // Correct "Me" to "Joven" and filter out duplicates
-    const correctedNames = [...new Set(names.map(name => name === 'Me' ? 'Joven' : name))];
+    // Correct "Me" to "Joven Del Rosario Ong" and filter out duplicates
+    const correctedNames = [...new Set(names.map(name => name === 'Me' ? 'Joven Del Rosario Ong' : name))];
 
     // Firestore 'in' queries are limited to 30 values.
     const nameChunks = [];
@@ -98,7 +98,7 @@ export default function OpsPage() {
     // Create a map from original name to ID for the final mapping
     const finalMap = new Map<string, string>();
     names.forEach(originalName => {
-      const correctedName = originalName === 'Me' ? 'Joven' : originalName;
+      const correctedName = originalName === 'Me' ? 'Joven Del Rosario Ong' : originalName;
       const assetId = existingAssets.get(correctedName);
       if (assetId) {
         finalMap.set(originalName, assetId);
