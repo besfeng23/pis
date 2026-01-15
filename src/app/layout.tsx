@@ -16,9 +16,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${GeistMono.variable} dark`}>
+    <html lang="en" className={`${GeistMono.variable} dark font-mono`}>
       <head></head>
-      <body className="font-mono antialiased">
+      <body className="antialiased">
         <FirebaseClientProvider>
           <div className="relative flex min-h-screen flex-col">
             <main className="flex-1 pb-20">{children}</main>
