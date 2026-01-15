@@ -8,7 +8,6 @@ import Papa from 'papaparse';
 import JSZip from 'jszip';
 import {
   useFirebase,
-  addDocumentNonBlocking,
 } from '@/firebase';
 import {
   collection,
@@ -19,12 +18,6 @@ import {
   serverTimestamp,
   writeBatch,
 } from 'firebase/firestore';
-
-type Asset = {
-  id?: string;
-  name: string;
-  threat_level: 'Green' | 'Red';
-};
 
 type Intercept = {
   asset_id: string;
@@ -49,9 +42,6 @@ export default function OpsPage() {
     const existingAssets = new Map<string, string>();
     const newAssetNames = new Set<string>();
 
-    // In a real-world scenario with a very large number of names,
-    // this should be batched into multiple 'in' queries.
-    // Firestore 'in' query supports up to 30 elements.
     const nameChunks = [];
     for (let i = 0; i < names.length; i += 30) {
       nameChunks.push(names.slice(i, i + 30));
@@ -75,7 +65,7 @@ export default function OpsPage() {
         const batch = writeBatch(firestore);
         newAssetNames.forEach(name => {
             const newDocRef = doc(collection(firestore, 'assets'));
-            batch.set(newDocRef, { name, threat_level: 'Green' });
+            batch.set(newDocRef, { name, threat_level: 'Green', estimatedValue: 0 });
             existingAssets.set(name, newDocRef.id);
         });
         await batch.commit();
@@ -94,7 +84,6 @@ export default function OpsPage() {
       await batch.commit();
   };
 
-
   const processMessages = async (messages: {sender: string, content: string, timestamp: any}[]) => {
       const totalMessages = messages.length;
       if (totalMessages === 0) {
@@ -106,7 +95,6 @@ export default function OpsPage() {
       const uniqueSenders = [...new Set(messages.map(m => m.sender))];
       const assetMap = await getOrCreateAssets(uniqueSenders);
 
-      let processedMessages = 0;
       const interceptsToSave: Intercept[] = [];
 
       for (const message of messages) {
@@ -120,20 +108,19 @@ export default function OpsPage() {
           }
       }
 
-      // Batch intercepts for saving
-      const batchSize = 500; // Firestore batch limit
+      let processedCount = 0;
+      const batchSize = 500;
       for (let i = 0; i < interceptsToSave.length; i += batchSize) {
           const batch = interceptsToSave.slice(i, i + batchSize);
           await saveInterceptsBatch(batch);
-          processedMessages += batch.length;
-          setProgress((processedMessages / totalMessages) * 100);
+          processedCount += batch.length;
+          setProgress((processedCount / totalMessages) * 100);
       }
 
-      setMessageCount(processedMessages);
+      setMessageCount(processedCount);
       setIsProcessing(false);
       setProgress(100);
   }
-
 
   const handleFileChange = async (
     event: React.ChangeEvent<HTMLInputElement>
@@ -146,46 +133,52 @@ export default function OpsPage() {
     setMessageCount(0);
     
     if (file.name.endsWith('.csv')) {
-        Papa.parse(file, {
-            worker: true,
-            header: true,
-            skipEmptyLines: true,
-            complete: async (results) => {
-                const messages = results.data.map((row: any) => ({
-                    sender: row.Name,
-                    content: row.Message,
-                    timestamp: row.Date,
-                })).filter(m => m.sender && m.content);
-                await processMessages(messages);
-            },
-            error: (error) => {
-                console.error('Error parsing CSV:', error);
-                setIsProcessing(false);
-            }
-        });
+      Papa.parse(file, {
+        worker: true,
+        header: false,
+        skipEmptyLines: true,
+        complete: async (results) => {
+          const rows = results.data as string[][];
+          // Skip header row
+          const messages = rows.slice(1).map(row => ({
+            sender: row[2], // 'Name' column
+            content: row[3], // 'Message' column
+            timestamp: row[0], // 'Date' column
+          })).filter(m => m.sender && m.content);
+          await processMessages(messages);
+        },
+        error: (error) => {
+          console.error('Error parsing CSV:', error);
+          setIsProcessing(false);
+        }
+      });
     } else if (file.name.endsWith('.zip')) {
-      const zip = await JSZip.loadAsync(file);
-      const messageFiles = Object.values(zip.files).filter(f =>
-        f.name.endsWith('message_1.json')
-      );
-      
-      let allMessages: {sender_name: string, content: string, timestamp_ms: number}[] = [];
-      for (const file of messageFiles) {
-          const content = await file.async('string');
-          const chatData = JSON.parse(content);
-          if (chatData.messages) {
-              allMessages.push(...chatData.messages);
-          }
+      try {
+        const zip = await JSZip.loadAsync(file);
+        const messageFiles = Object.values(zip.files).filter(f =>
+          f.name.endsWith('message_1.json') && !f.dir
+        );
+        
+        let allMessages: {sender_name: string, content: string, timestamp_ms: number}[] = [];
+        for (const file of messageFiles) {
+            const content = await file.async('string');
+            const chatData = JSON.parse(content);
+            if (chatData.messages) {
+                allMessages.push(...chatData.messages);
+            }
+        }
+        
+        const messagesToProcess = allMessages.map(message => ({
+            sender: message.sender_name,
+            content: message.content,
+            timestamp: new Date(message.timestamp_ms),
+        })).filter(m => m.sender && m.content);
+  
+        await processMessages(messagesToProcess);
+      } catch (error) {
+        console.error("Error processing zip file:", error);
+        setIsProcessing(false);
       }
-      
-      const messagesToProcess = allMessages.map(message => ({
-          sender: message.sender_name,
-          content: message.content,
-          timestamp: new Date(message.timestamp_ms),
-      })).filter(m => m.sender && m.content);
-
-      await processMessages(messagesToProcess);
-
     } else {
       console.error('Unsupported file type');
       setIsProcessing(false);

@@ -13,8 +13,8 @@ import {
 type Asset = {
   id: string;
   name: string;
-  threatLevel: 'High' | 'Low';
-  estimatedValue: number;
+  threat_level: 'Green' | 'Red';
+  estimatedValue?: number;
 };
 
 export default function AssetsPage() {
@@ -65,20 +65,20 @@ export default function AssetsPage() {
                   {asset.name}
                 </CardTitle>
                 <Badge
-                  variant={asset.threatLevel === 'High' ? 'destructive' : 'default'}
+                  variant={asset.threat_level === 'Red' ? 'destructive' : 'default'}
                   className={
-                    asset.threatLevel === 'Low'
+                    asset.threat_level === 'Green'
                       ? 'border-accent bg-transparent text-accent'
                       : ''
                   }
                 >
-                  {asset.threatLevel}
+                  {asset.threat_level}
                 </Badge>
               </div>
             </CardHeader>
             <CardContent className="p-4 pt-0">
               <div className="text-sm font-semibold text-primary">
-                ${asset.estimatedValue.toLocaleString()}
+                ${(asset.estimatedValue || 0).toLocaleString()}
               </div>
               <div className="text-xs text-muted-foreground">{asset.id}</div>
             </CardContent>
