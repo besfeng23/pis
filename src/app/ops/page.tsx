@@ -18,6 +18,7 @@ import {
   query,
   where,
   serverTimestamp,
+  setDoc,
 } from 'firebase/firestore';
 
 type Asset = {
@@ -94,12 +95,12 @@ export default function OpsPage() {
           parser.pause(); // Pause parsing to wait for async operation
           const row = results.data as string[];
           // Skip header or empty rows
-          if (row.length < 5 || row[0] === 'Date') {
+          if (row.length < 4 || row[0] === 'Date') {
              parser.resume();
              return;
           }
 
-          const [timestamp, , sender, , message] = row;
+          const [timestamp, , sender, message] = row;
           if (sender && message) {
             try {
               const assetId = await upsertAsset(sender);
