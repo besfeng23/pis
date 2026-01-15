@@ -56,7 +56,7 @@ const analyzeSentimentFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await prompt(input, {
-      model: 'googleai/gemini-1.5-flash',
+      model: 'googleai/gemini-2.5-flash',
       config: {
         temperature: 0.2,
         safetySettings: [
