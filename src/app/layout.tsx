@@ -21,7 +21,7 @@ export default function RootLayout({
       <body className="antialiased">
         <FirebaseClientProvider>
           <div className="relative flex min-h-screen flex-col">
-            <main className="flex-1 pb-20">{children}</main>
+            <main className="flex-1 pb-[calc(5rem+env(safe-area-inset-bottom))]">{children}</main>
             <BottomNav />
           </div>
           <Toaster />

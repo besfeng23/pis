@@ -6,21 +6,27 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isOwner(data) {
+      return isSignedIn() && data.ownerUid == request.auth.uid;
+    }
+
+    function isAssetOwner(assetId) {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/assets/$(assetId)).data.ownerUid == request.auth.uid;
+    }
+
     match /assets/{assetId} {
-      allow read: if isSignedIn();
-      // Allow creation and update for signed-in users
-      allow write: if isSignedIn(); 
+      allow read, update, delete: if isOwner(resource.data);
+      allow create: if isSignedIn() && request.resource.data.ownerUid == request.auth.uid;
     }
 
     match /assets/{assetId}/intercepts/{interceptId} {
-      allow read: if isSignedIn();
-      // Allow creation of intercepts for signed-in users
-      allow create: if isSignedIn();
-      allow write: if isSignedIn();
+      allow read, update, delete: if isAssetOwner(assetId);
+      allow create: if isAssetOwner(assetId);
     }
 
     match /ingestion_logs/{logId} {
-      allow read: if isSignedIn();
+      allow read: if isOwner(resource.data);
     }
   }
 }

@@ -101,6 +101,7 @@ function IngestionLogs() {
 export default function OpsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { user } = useFirebase();
   const [isUploading, setIsUploading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [fileQueue, setFileQueue] = useState<FileQueueItem[]>([]);
@@ -140,7 +141,11 @@ export default function OpsPage() {
           const file = item.file;
           const filePath = `raw-intel/${Date.now()}_${file.name}`;
           const fileStorageRef = storageRef(storage, filePath);
-          const uploadTask = uploadBytesResumable(fileStorageRef, file);
+          const uploadTask = uploadBytesResumable(
+            fileStorageRef,
+            file,
+            user?.uid ? { customMetadata: { ownerUid: user.uid } } : undefined
+          );
 
           uploadTask.on('state_changed',
             (snapshot: UploadTaskSnapshot) => {
