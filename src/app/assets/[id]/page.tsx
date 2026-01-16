@@ -270,7 +270,8 @@ export default function AssetDetailPage() {
                           dataKey="sentiment"
                           stroke="hsl(var(--primary))"
                           strokeWidth={2}
-                          dot={false}
+                          dot={{ r: 2, fill: 'hsl(var(--primary))' }}
+                          activeDot={{ r: 4 }}
                         />
                       </LineChart>
                     </ResponsiveContainer>
@@ -382,7 +383,7 @@ export default function AssetDetailPage() {
         </TabsContent>
       </Tabs>
 
-      <footer className="fixed bottom-20 left-0 right-0 z-40 border-t border-border bg-background p-4">
+      <footer className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] left-0 right-0 z-40 border-t border-border bg-background/95 p-4 backdrop-blur supports-[padding:env(safe-area-inset-bottom)]:pb-[calc(1rem+env(safe-area-inset-bottom))]">
         <div className="grid grid-cols-2 gap-2">
           <Dialog>
             <DialogTrigger asChild>
@@ -392,12 +393,15 @@ export default function AssetDetailPage() {
                 onClick={handleGenerateIntercept}
                 disabled={isGeneratingIntercepts}
               >
-                {isGeneratingIntercepts ? 'Generating...' : 'STANDARD INTERCEPT'}
+                {isGeneratingIntercepts ? 'Generating...' : 'TACTICAL INTERCEPT'}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Generated Intercepts for {asset.name}</DialogTitle>
+                <DialogTitle>Tactical Intercept Options for {asset.name}</DialogTitle>
+                <DialogDescription>
+                  Select the best-fit response and copy the draft to deploy in the field.
+                </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 {isGeneratingIntercepts && <p>AI is drafting messages...</p>}
@@ -405,7 +409,7 @@ export default function AssetDetailPage() {
                   <div className="flex flex-col gap-4">
                     <Card className="bg-muted/50">
                       <CardHeader className="flex-row items-center justify-between p-3">
-                        <CardTitle className="text-base">Alpha Draft</CardTitle>
+                        <CardTitle className="text-base">Option Alpha</CardTitle>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -420,7 +424,7 @@ export default function AssetDetailPage() {
                     </Card>
                     <Card className="bg-muted/50">
                       <CardHeader className="flex-row items-center justify-between p-3">
-                        <CardTitle className="text-base">Bravo Draft</CardTitle>
+                        <CardTitle className="text-base">Option Bravo</CardTitle>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -435,7 +439,7 @@ export default function AssetDetailPage() {
                     </Card>
                     <Card className="bg-muted/50">
                       <CardHeader className="flex-row items-center justify-between p-3">
-                        <CardTitle className="text-base">Proxy Draft</CardTitle>
+                        <CardTitle className="text-base">Option Charlie</CardTitle>
                         <Button
                           variant="ghost"
                           size="icon"

@@ -9,6 +9,7 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
+import {HarmBlockThreshold, HarmCategory} from '@google/generative-ai';
 
 const GenerateInterceptsInputSchema = z.object({
   assetName: z.string().describe('The name of the target asset.'),
@@ -31,16 +32,14 @@ export type GenerateInterceptsInput = z.infer<
 const GenerateInterceptsOutputSchema = z.object({
   draftA: z
     .string()
-    .describe('Draft A (Alpha): A casual, low-pressure check-in.'),
+    .describe('Option Alpha: A casual, low-pressure check-in.'),
   draftB: z
     .string()
-    .describe(
-      'Draft B (Bravo): A direct invitation or question about their interests.'
-    ),
+    .describe('Option Bravo: A direct invitation or question about their interests.'),
   draftC: z
     .string()
     .describe(
-      "Draft C (Proxy): A formal, third-party sales script related to the asset's niche."
+      "Option Charlie: A formal, third-party sales script related to the asset's niche."
     ),
 });
 export type GenerateInterceptsOutput = z.infer<
@@ -66,9 +65,9 @@ const prompt = ai.definePrompt({
 
   Based on the provided information, generate the following three drafts:
 
-  - **Draft A (Alpha)**: Write a casual, low-pressure check-in. If the threat level is 'Red', make this message extra cautious and disarming. If the threat is 'Green', it can be a bit more friendly.
-  - **Draft B (Bravo)**: Write a direct invitation or a question related to their interests or active needs. If the threat level is 'Green', be confident and engaging. If the threat is 'Red', this approach is not recommended, so generate a more neutral, information-gathering question instead.
-  - **Draft C (The Proxy)**: Write a formal, third-party style message. If a commercial niche is provided, frame it as a professional outreach related to that niche. The script should start with "Hi {{assetName}}, I saw your interest in {{assetNiche}}...". If no niche is available, create a generic professional networking request.`,
+  - **Option Alpha**: Write a casual, low-pressure check-in. If the threat level is 'Red', make this message extra cautious and disarming. If the threat is 'Green', it can be a bit more friendly.
+  - **Option Bravo**: Write a direct invitation or a question related to their interests or active needs. If the threat level is 'Green', be confident and engaging. If the threat is 'Red', this approach is not recommended, so generate a more neutral, information-gathering question instead.
+  - **Option Charlie**: Write a formal, third-party style message. If a commercial niche is provided, frame it as a professional outreach related to that niche. The script should start with "Hi {{assetName}}, I saw your interest in {{assetNiche}}...". If no niche is available, create a generic professional networking request.`,
 });
 
 const generateInterceptsFlow = ai.defineFlow(
@@ -78,7 +77,30 @@ const generateInterceptsFlow = ai.defineFlow(
     outputSchema: GenerateInterceptsOutputSchema,
   },
   async input => {
-    const {output} = await prompt(input);
+    const {output} = await prompt(input, {
+      model: 'googleai/gemini-2.5-flash',
+      config: {
+        temperature: 0.6,
+        safetySettings: [
+          {
+            category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+            threshold: HarmBlockThreshold.BLOCK_NONE,
+          },
+          {
+            category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+            threshold: HarmBlockThreshold.BLOCK_NONE,
+          },
+          {
+            category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+            threshold: HarmBlockThreshold.BLOCK_NONE,
+          },
+          {
+            category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+            threshold: HarmBlockThreshold.BLOCK_NONE,
+          },
+        ],
+      },
+    });
     return output!;
   }
 );
